@@ -93,8 +93,7 @@ __device__ __forceinline__ Mesh kdop_hull_block(
     // Fast path: small mesh → exact D&C hull directly
     // ========================================================================
     if (nv <= 1024) {
-        int err = 0;
-        hull_dandc_warp_mesh(verts, nv, lane, heap, scratch_heap, &err, &s_result);
+        int err = hull_dandc_warp_mesh(verts, nv, lane, heap, scratch_heap, &s_result);
         if (lane == 0 && err) s_local_err = err;
         __syncwarp();
         if (!s_local_err && s_result.verts) {
@@ -171,10 +170,9 @@ __device__ __forceinline__ Mesh kdop_hull_block(
     // Step 3: D&C hull on extreme points → rough inner hull (on scratch_heap)
     // ========================================================================
     {
-        int err = 0;
-        hull_dandc_warp_mesh(
+        int err = hull_dandc_warp_mesh(
             s_extreme_pts, s_n_extreme, lane,
-            scratch_heap, scratch_heap, &err, &s_ext_hull);
+            scratch_heap, scratch_heap, &s_ext_hull);
         if (lane == 0 && err) s_local_err = err;
     }
     __syncwarp();
@@ -352,10 +350,9 @@ __device__ __forceinline__ Mesh kdop_hull_block(
     {
         int n_filt = s_n_filtered;
         if (n_filt >= 4) {
-            int err = 0;
-            hull_dandc_warp_mesh(
+            int err = hull_dandc_warp_mesh(
                 s_filtered, n_filt, lane,
-                heap, scratch_heap, &err, &s_result);
+                heap, scratch_heap, &s_result);
             if (lane == 0 && err) s_local_err = err;
         }
     }

@@ -18,7 +18,9 @@ Instrumentation (`#ifdef CUACD_BEAM_DEBUG`): `BtDCState` carries 4 counter field
 
 ## hull_dandc_warp_mesh API
 
-`hull_dandc_warp_mesh(pts, n, lane, heap, scratch_heap, err, s_result)` -- warp device function (all 32 lanes call with identical args).
+`int hull_dandc_warp_mesh(pts, n, lane, heap, scratch_heap, s_result)` -- warp device function (all 32 lanes call with identical args).
+
+- **Error**: returns 0 on success, else a `KERR_*` code; every lane returns the same value. Callers keep it in a thread-local `int`, which is why it is returned and not written through a pointer: an atomic on local memory compiles to a trap, so a failure (a pool running out) would end the kernel with error 719 instead of its code.
 
 - **Output**: writes into `Mesh* s_result` (must point to `__shared__` memory; zeroed on entry). Allocates a single combined chunk from `DeviceHeap* heap`. Sets `*s_result` to `{NULL,NULL,0,0,NULL}` on error or n<4.
 - **Heap chunk layout**: `[verts (nv*3 floats, 16-byte aligned) | tris (nt*3 ints, 16-byte aligned) | refcount(16B)]`; exact sizes from a count pass. `Mesh.refcount` points to the trailing `int`, initialized to 1.

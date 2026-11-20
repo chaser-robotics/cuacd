@@ -128,9 +128,8 @@ extern "C" __global__ void bench_hull_dandc_kernel(
     int count = offsets[warp_id + 1] - start;
 
     __shared__ Mesh s_mesh;
-    int err = 0;
-    hull_dandc_warp_mesh(pts + (long long)start * 3, count, lane,
-                         heap, scratch_heap, &err, &s_mesh);
+    int err = hull_dandc_warp_mesh(pts + (long long)start * 3, count, lane,
+                                   heap, scratch_heap, &s_mesh);
     if (lane == 0) {
         out_errors[warp_id] = err;
         out_nv[warp_id]     = s_mesh.nv;

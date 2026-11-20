@@ -1075,8 +1075,14 @@ __device__ inline void bt_computeBase(BtDCState* __restrict__ dc, int start, int
 // vblock data → same splits → same push/pop order → merge calls are in sync).
 // Base cases are primary-only; every merge uses bt_merge_pair so the secondary
 // participates in bt_findMaxAngle convergedly.
+// Only the primary allocates edges, so the pair reads the primary's edge-pool
+// error before each step and both stop at the first failure: a base case or a
+// merge that ran out of edges leaves its rings half-linked, and merging over
+// them follows NULL links.
 __device__ inline void bt_computeInternal(BtDCState* __restrict__ dc, int start, int end, BtIntermediateHull* result,
                                           CheckedBuf<BtDCStackItem> stack, bool is_primary) {
+    unsigned primary_lane = (threadIdx.x & (WARP_SIZE - 1)) & ~1u;
+    unsigned pair_mask    = 3u << primary_lane;
     int sp = 0;
 
     // Push root
@@ -1089,6 +1095,8 @@ __device__ inline void bt_computeInternal(BtDCState* __restrict__ dc, int start,
     sp++;
 
     while (sp > 0) {
+        int failed = __shfl_sync(pair_mask, dc->edgePool.error, primary_lane);
+        if (failed) { dc->edgePool.error = failed; return; }
         sp--;
         BtDCStackItem* item = &stack[sp];
 
@@ -1674,11 +1682,13 @@ __device__ inline void bt_compute_postsort(BtHullState* __restrict__ s, BtPoint3
 // scratch_heap — scratch heap: WarpPool backing + edge pool slabs, all freed on return.
 //
 // On error or n<4, *s_result is {NULL,NULL,0,0,NULL}.
-// *err is set to a nonzero error code on failure (all lanes see the same value).
-__device__ __forceinline__ void hull_dandc_warp_mesh(
+// Returns 0 on success, else a KERR_* code; every lane returns the same value.
+// The code is returned rather than written through a pointer: callers keep it
+// in a thread-local word, and an atomic on local memory compiles to a trap.
+__device__ __forceinline__ int hull_dandc_warp_mesh(
     const float* __restrict__ pts, int n, int lane,
     DeviceHeap* __restrict__ heap, DeviceHeap* __restrict__ scratch_heap,
-    int* __restrict__ err, Mesh* __restrict__ s_result)
+    Mesh* __restrict__ s_result)
 {
     __shared__ WarpPool           s_pool;
     __shared__ BtPoint32*         s_points_scratch; // heap-allocated presort array, freed after vertex init
@@ -1686,8 +1696,8 @@ __device__ __forceinline__ void hull_dandc_warp_mesh(
     __shared__ BtHullState        s_state;
     // Unified error word: 0 = success, otherwise a KERR_* code. Kept in shared
     // memory (not a per-thread register) so it does not contribute to the
-    // kernel's per-thread register footprint. Only lane 0 writes; the final
-    // atomicOr to *err happens from lane 0.
+    // kernel's per-thread register footprint. Only lane 0 writes; every lane
+    // returns it.
     __shared__ int                s_err;
 
 #ifdef CUACD_BEAM_DEBUG
@@ -1704,7 +1714,7 @@ __device__ __forceinline__ void hull_dandc_warp_mesh(
         s_pool.base = NULL; s_points_scratch = NULL;
     }
 
-    if (n < 4) { __syncwarp(); return; }
+    if (n < 4) { __syncwarp(); return 0; }
 
     // --- Allocate WarpPool backing from scratch_heap (lane 0) ---
     if (lane == 0) {
@@ -1720,10 +1730,7 @@ __device__ __forceinline__ void hull_dandc_warp_mesh(
         }
     }
     __syncwarp();
-    if (!s_pool.base) {
-        if (lane == 0 && s_err) atomicOr(err, s_err);
-        return;
-    }
+    if (!s_pool.base) return s_err;
 
     // --- Phase 1: pre-sort (all lanes) ---
     // s_state is __shared__ to avoid 32 copies in local memory (only lane 0 uses it).
@@ -1855,7 +1862,5 @@ done:
     if (lane == 0 && (n == 5549 || n == 4423)) DPRINTF("[hull] block=%d SLOW nv=%d n_filtered=%d result_nv=%d result_nt=%d dt=%lld dt_sort=%lld dt_subhull=%lld dt_treemerge=%lld dt_final=%lld \n",
         blockIdx.x, n, n, s_result->nv, s_result->nt, clock64() - t_start, t_sort - t_start, t_subhull - t_sort, t_treemerge - t_subhull, clock64() - t_treemerge);
     
-
-    // Publish local error to the global error word (visible to host / other blocks).
-    if (lane == 0 && s_err) atomicOr(err, s_err);
+    return s_err;
 }

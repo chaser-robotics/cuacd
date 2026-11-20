@@ -43,10 +43,9 @@ extern "C" __global__ void hull_dandc_kernel(
     int count = offsets[warp_id + 1] - start;
 
     __shared__ Mesh s_mesh;
-    int err = 0;
-    hull_dandc_warp_mesh(
+    int err = hull_dandc_warp_mesh(
         pts + (long long)start * 3, count, lane,
-        heap, scratch_heap, &err, &s_mesh);
+        heap, scratch_heap, &s_mesh);
 
     // Write counts (lane 0)
     if (lane == 0) {
