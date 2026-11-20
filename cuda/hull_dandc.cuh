@@ -1428,12 +1428,20 @@ struct BtLanePoolCleanup {
 };
 
 // Allocate one slab (BTPOOL_BLOCK_SIZE) from scratch_heap and prepend to the free list.
+// A slab takes a cleanup slot only once it is allocated, and gives the slot back
+// when the list is full, so every one of the first nblocks slots holds a slab
+// the hull's exit frees.
 __device__ inline int btpool_add_block(BtPool* p) {
     BtLanePoolCleanup* c = p->cleanup;
-    int idx = atomicAdd(&c->nblocks, 1);
-    if (idx >= BT_HULL_GROUPS * BTPOOL_MAX_BLOCKS || !c->blocks) { p->error = KERR_BT_POOL_EXHAUST; return -1; }
+    if (!c->blocks) { p->error = KERR_BT_POOL_EXHAUST; return -1; }
     void* block = NULL;
     if (heap_alloc(p->scratch_heap, (unsigned int)(BTPOOL_BLOCK_SIZE * p->objSize), &block) != HEAP_OK) {
+        p->error = KERR_BT_POOL_EXHAUST; return -1;
+    }
+    int idx = atomicAdd(&c->nblocks, 1);
+    if (idx >= BT_HULL_GROUPS * BTPOOL_MAX_BLOCKS) {
+        atomicSub(&c->nblocks, 1);
+        heap_free(p->scratch_heap, block);
         p->error = KERR_BT_POOL_EXHAUST; return -1;
     }
     c->blocks[idx] = block;
@@ -1680,6 +1688,9 @@ __device__ inline void bt_compute_postsort(BtHullState* __restrict__ s, BtPoint3
 //                filled with heap-allocated verts/tris on success.
 // heap         — output heap: one chunk allocated for [verts | tris].
 // scratch_heap — scratch heap: WarpPool backing + edge pool slabs, all freed on return.
+//                It may be the output heap itself (a rough hull kept as scratch),
+//                so neither pointer is __restrict__: the allocator's arena state is
+//                reached through both.
 //
 // On error or n<4, *s_result is {NULL,NULL,0,0,NULL}.
 // Returns 0 on success, else a KERR_* code; every lane returns the same value.
@@ -1687,7 +1698,7 @@ __device__ inline void bt_compute_postsort(BtHullState* __restrict__ s, BtPoint3
 // in a thread-local word, and an atomic on local memory compiles to a trap.
 __device__ __forceinline__ int hull_dandc_warp_mesh(
     const float* __restrict__ pts, int n, int lane,
-    DeviceHeap* __restrict__ heap, DeviceHeap* __restrict__ scratch_heap,
+    DeviceHeap* heap, DeviceHeap* scratch_heap,
     Mesh* __restrict__ s_result)
 {
     __shared__ WarpPool           s_pool;
