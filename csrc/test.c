@@ -20,6 +20,7 @@
         cuGetErrorString(_r, &_msg); \
         snprintf(ctx->last_error, sizeof(ctx->last_error), \
                  "%s failed at test.c:%d: %s", #call, __LINE__, _msg ? _msg : "unknown"); \
+        ctx->out_of_memory = (_r == CUDA_ERROR_OUT_OF_MEMORY); \
         return (int)_r; \
     } \
 } while(0)
@@ -321,6 +322,7 @@ int gpu_test_plane_cut(
         kerr_decode(kerr_h, errbuf, sizeof(errbuf));
         snprintf(ctx->last_error, sizeof(ctx->last_error),
                  "plane_cut %s", errbuf);
+        ctx->out_of_memory = (kerr_h & KERR_MEMORY_BITS) != 0;
         goto cleanup_err;
     }
 
@@ -480,6 +482,7 @@ int gpu_test_hausdorff(
         kerr_decode(h_err, errbuf, sizeof(errbuf));
         snprintf(ctx->last_error, sizeof(ctx->last_error),
                  "hausdorff %s", errbuf);
+        ctx->out_of_memory = (h_err & KERR_MEMORY_BITS) != 0;
         return h_err;
     }
     return 0;

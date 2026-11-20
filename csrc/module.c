@@ -25,11 +25,20 @@ static GpuState g_state = { NULL };
 
 // ---------------------------------------------------------------------------
 // Helper: raise an error from gpu_last_error
+//   cuacd.OutOfMemoryError where the failure ran short of device memory (the
+//   same call can succeed in a larger pool), RuntimeError otherwise.
 // ---------------------------------------------------------------------------
 
 static PyObject* raise_error(gpu_ctx_t ctx, int rc) {
     const char* msg = gpu_last_error(ctx);
-    PyErr_Format(PyExc_RuntimeError, "cuacd error %d: %s", rc, msg ? msg : "unknown");
+    int out_of_memory = gpu_take_out_of_memory(ctx);
+    PyObject* type = PyExc_RuntimeError;
+    PyObject* package = out_of_memory ? PyImport_ImportModule("cuacd") : NULL;
+    PyObject* out_of_memory_error = package ? PyObject_GetAttrString(package, "OutOfMemoryError") : NULL;
+    Py_XDECREF(package);
+    if (out_of_memory_error) type = out_of_memory_error;
+    PyErr_Format(type, "cuacd error %d: %s", rc, msg ? msg : "unknown");
+    Py_XDECREF(out_of_memory_error);
     return NULL;
 }
 
@@ -126,10 +135,7 @@ static PyObject* py_heap_stats(PyObject* self, PyObject* args) {
     REQUIRE_CTX();
     unsigned long long s[6] = {0};
     int rc = gpu_heap_stats(g_state.ctx, s);
-    if (rc != 0) {
-        PyErr_SetString(PyExc_RuntimeError, "gpu_heap_stats failed");
-        return NULL;
-    }
+    if (rc != 0) return raise_error(g_state.ctx, rc);
     return Py_BuildValue("(KKKKKK)", s[0], s[1], s[2], s[3], s[4], s[5]);
 }
 
@@ -258,10 +264,7 @@ static PyObject* py_test_plane_cut(PyObject* self, PyObject* args) {
         (float*)(uintptr_t)onvp, onvc,
         (int*)  (uintptr_t)ontp, ontc,
         &n_pv, &n_pt, &n_nv, &n_nt);
-    if (rc != 0) {
-        PyErr_SetString(PyExc_RuntimeError, "plane_cut failed");
-        return NULL;
-    }
+    if (rc != 0) return raise_error(g_state.ctx, rc);
     return Py_BuildValue("iiii", n_pv, n_pt, n_nv, n_nt);
 }
 
@@ -293,10 +296,7 @@ static PyObject* py_test_postprocess_dc(PyObject* self, PyObject* args) {
         (float*)(uintptr_t)ovp, (int*)(uintptr_t)otp,
         (int*)(uintptr_t)onvp, (int*)(uintptr_t)ontp,
         &n_comp);
-    if (rc != 0) {
-        PyErr_SetString(PyExc_RuntimeError, "postprocess_dc failed");
-        return NULL;
-    }
+    if (rc != 0) return raise_error(g_state.ctx, rc);
     return Py_BuildValue("i", n_comp);
 }
 

@@ -27,6 +27,8 @@ int  gpu_init(gpu_ctx_t* ctx, int device_ordinal, size_t pool_bytes);
 void gpu_destroy(gpu_ctx_t ctx);
 
 const char* gpu_last_error(gpu_ctx_t ctx);
+// Whether the last failure ran short of device memory; reading it clears it.
+int gpu_take_out_of_memory(gpu_ctx_t ctx);
 
 // gpu_heap_compact — coalesce free blocks in both persistent heaps.
 // Call periodically to recover fragmented memory between kernel launches.

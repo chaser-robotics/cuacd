@@ -50,6 +50,7 @@ typedef struct {
         cuGetErrorString(_r, &_msg); \
         snprintf(ctx->last_error, sizeof(ctx->last_error), \
                  "%s failed at preprocess.c:%d: %s", #call, __LINE__, _msg ? _msg : "unknown"); \
+        ctx->out_of_memory = (_r == CUDA_ERROR_OUT_OF_MEMORY); \
         goto fail; \
     } \
 } while (0)

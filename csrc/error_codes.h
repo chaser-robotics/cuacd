@@ -38,6 +38,7 @@ static inline int kerr_decode(int err, char* buf, int bufsize) {
         { KERR_HEAP_OOM,          "heap:oom" },
         { KERR_HEAP_CORRUPT,      "heap:corrupt" },
         { KERR_HEAP_CORRUPT_PREV, "heap:corrupt_prev" },
+        { KERR_BT_EDGE_SLAB_OOM,  "hull_dandc:edge_slab_oom" },
     };
     int off = snprintf(buf, bufsize, "GPU error 0x%x [", err);
     int first = 1;

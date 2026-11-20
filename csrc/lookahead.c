@@ -165,6 +165,7 @@ int lookahead_decompose(
         cuGetErrorString(_r, &_msg); \
         snprintf(ctx->last_error, sizeof(ctx->last_error), \
                  "%s failed at lookahead.c:%d: %s", #call, __LINE__, _msg ? _msg : "unknown"); \
+        ctx->out_of_memory = (_r == CUDA_ERROR_OUT_OF_MEMORY); \
         result_code = (int)_r; \
         goto cleanup; \
     } \
@@ -277,7 +278,9 @@ int lookahead_decompose(
         } \
         int _e = 0; cuMemcpyDtoH(&_e, d_err, sizeof(int)); \
         if (_e) { char _eb[512]; kerr_decode(_e, _eb, sizeof(_eb)); \
-            fprintf(stderr, "[la] %s after %s\n", _eb, label); result_code = _e; goto cleanup; } \
+            fprintf(stderr, "[la] %s after %s\n", _eb, label); \
+            snprintf(ctx->last_error, sizeof(ctx->last_error), "lookahead_decompose: %s after %s", _eb, label); \
+            ctx->out_of_memory = (_e & KERR_MEMORY_BITS) != 0; result_code = _e; goto cleanup; } \
         if (verbose) fprintf(stderr, "[la] %s OK\n", label); \
     } } while(0)
 
@@ -481,6 +484,7 @@ int lookahead_decompose(
             kerr_decode(*h_err_p, errbuf, sizeof(errbuf));
             snprintf(ctx->last_error, sizeof(ctx->last_error),
                      "lookahead_decompose: %s at iter %d (sort/hausdorff/count)", errbuf, iter);
+            ctx->out_of_memory = (*h_err_p & KERR_MEMORY_BITS) != 0;
             result_code = *h_err_p;
             goto cleanup;
         }
@@ -956,6 +960,7 @@ int lookahead_decompose(
             kerr_decode(*h_err_p, errbuf, sizeof(errbuf));
             snprintf(ctx->last_error, sizeof(ctx->last_error),
                      "lookahead_decompose: %s at iter %d", errbuf, iter);
+            ctx->out_of_memory = (*h_err_p & KERR_MEMORY_BITS) != 0;
             result_code = *h_err_p;
             goto cleanup;
         }

@@ -14,6 +14,7 @@
         cuGetErrorString(_r, &_msg); \
         snprintf(ctx->last_error, sizeof(ctx->last_error), \
                  "%s failed: %s", #call, _msg ? _msg : "unknown"); \
+        ctx->out_of_memory = (_r == CUDA_ERROR_OUT_OF_MEMORY); \
         goto cleanup_err; \
     } \
 } while(0)
@@ -95,6 +96,7 @@ int gpu_test_postprocess_dc(
         kerr_decode(kerr_h, errbuf, sizeof(errbuf));
         snprintf(ctx->last_error, sizeof(ctx->last_error),
                  "postprocess_dc %s", errbuf);
+        ctx->out_of_memory = (kerr_h & KERR_MEMORY_BITS) != 0;
         goto cleanup_err;
     }
 

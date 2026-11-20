@@ -40,6 +40,13 @@ def _load_extension():
         ) from e
     _gpu = extension
 
+
+class OutOfMemoryError(RuntimeError):
+    """A call ran short of device memory: a carve from the context's pool (its
+    heaps) or a device allocation beside it failed. The same call can succeed in a
+    context with a larger ``pool_bytes``; every other failure is a RuntimeError."""
+
+
 # mesh-audit verdict bitmask (mirrors cuda/mesh_audit.cuh MAV_* flags)
 MAV_DEGEN_TRI   = 1 << 0
 MAV_BAD_INDEX   = 1 << 1

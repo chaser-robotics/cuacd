@@ -155,6 +155,8 @@ struct gpu_ctx {
     CUdeviceptr d_pool_struct;    // struct DevicePool on device (much larger now)
 
     char last_error[256];
+    int  out_of_memory;  // the last failure ran short of device memory: a kernel's KERR_MEMORY_BITS or a
+                         // CUDA_ERROR_OUT_OF_MEMORY; read and cleared as the failure is raised
 };
 
 #endif // STRUCTS_H

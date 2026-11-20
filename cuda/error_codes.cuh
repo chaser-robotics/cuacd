@@ -14,7 +14,7 @@
 #define KERR_BT_WARP_OOM       (1 <<  0)  // WarpPool allocation failed (bt_alloc)
 #define KERR_BT_SORT_STACK     (1 <<  1)  // warp_sort stack overflow
 #define KERR_BT_DC_STACK       (1 <<  2)  // D&C recursion stack overflow
-#define KERR_BT_POOL_EXHAUST   (1 <<  3)  // edge pool block limit reached
+#define KERR_BT_POOL_EXHAUST   (1 <<  3)  // edge pool's cleanup slots all taken
 #define KERR_BT_HEAP_TO_WARP   (1 <<  4)  // heap_alloc for WarpPool backing failed
 #define KERR_BT_HEAP_OUTPUT    (1 <<  5)  // heap_alloc for output mesh failed
 #define KERR_BT_EXTRACT_FAIL   (1 <<  6)  // bt_extractMesh returned error
@@ -48,6 +48,15 @@
 #define KERR_HEAP_CORRUPT      (1 << 20)  // heap_free detected block corruption
 #define KERR_HEAP_CORRUPT_PREV (1 << 21)  // heap_free detected previous-block corruption
 
+// --- hull_dandc again: its edge slabs ---
+#define KERR_BT_EDGE_SLAB_OOM  (1 << 22)  // heap_alloc for an edge slab failed
+
 // Total error types and mask for unknown-bit detection on host side.
-#define KERR_COUNT     22
+#define KERR_COUNT     23
 #define KERR_ALL_BITS  ((1 << KERR_COUNT) - 1)
+
+// The bits saying a heap or the pool had too little room left: the same call can succeed
+// in a larger pool. Every other bit is a fixed limit or a defect, which a larger pool does not change.
+#define KERR_MEMORY_BITS (KERR_BT_HEAP_TO_WARP | KERR_BT_HEAP_OUTPUT | KERR_BT_EDGE_SLAB_OOM | \
+                          KERR_PC_SCRATCH_OOM | KERR_PC_POOL_OOM | KERR_HD_SCRATCH_OOM | KERR_DC_OOM | \
+                          KERR_KDOP_SCRATCH_OOM | KERR_LA_SORT_OOM | KERR_LA_EVAL_OOM | KERR_HEAP_OOM)

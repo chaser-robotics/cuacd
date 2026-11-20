@@ -48,6 +48,7 @@ void gpu_set_fatbin(const void* data, size_t len) {
         cuGetErrorString(_r, &_msg); \
         snprintf(ctx->last_error, sizeof(ctx->last_error), \
                  "%s failed at heap.c:%d: %s", #call, __LINE__, _msg ? _msg : "unknown"); \
+        ctx->out_of_memory = (_r == CUDA_ERROR_OUT_OF_MEMORY); \
         return (int)_r; \
     } \
 } while(0)
@@ -238,6 +239,13 @@ void gpu_destroy(gpu_ctx_t ctx) {
 const char* gpu_last_error(gpu_ctx_t ctx) {
     if (!ctx || ctx->last_error[0] == '\0') return NULL;
     return ctx->last_error;
+}
+
+int gpu_take_out_of_memory(gpu_ctx_t ctx) {
+    if (!ctx) return 0;
+    int out_of_memory = ctx->out_of_memory;
+    ctx->out_of_memory = 0;
+    return out_of_memory;
 }
 
 // ---------------------------------------------------------------------------

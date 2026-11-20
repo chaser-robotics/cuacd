@@ -1436,7 +1436,7 @@ __device__ inline int btpool_add_block(BtPool* p) {
     if (!c->blocks) { p->error = KERR_BT_POOL_EXHAUST; return -1; }
     void* block = NULL;
     if (heap_alloc(p->scratch_heap, (unsigned int)(BTPOOL_BLOCK_SIZE * p->objSize), &block) != HEAP_OK) {
-        p->error = KERR_BT_POOL_EXHAUST; return -1;
+        p->error = KERR_BT_EDGE_SLAB_OOM; return -1;
     }
     int idx = atomicAdd(&c->nblocks, 1);
     if (idx >= BT_HULL_GROUPS * BTPOOL_MAX_BLOCKS) {
@@ -1553,7 +1553,7 @@ __device__ inline void bt_compute_postsort(BtHullState* __restrict__ s, BtPoint3
         if (lane == 0) {
             void* blk = NULL;
             if (heap_alloc(shared_sh, (unsigned int)slab_stride * BT_HULL_GROUPS, &blk) != HEAP_OK) {
-                shared_wp->error = KERR_BT_POOL_EXHAUST;
+                shared_wp->error = KERR_BT_EDGE_SLAB_OOM;
             } else {
                 s_edge_slab_base = blk;
             }
