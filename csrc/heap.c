@@ -74,7 +74,11 @@ int gpu_init(gpu_ctx_t* out, int device_ordinal, size_t pool_bytes) {
     } else {
         int dev = (device_ordinal >= 0) ? device_ordinal : 0;
         CHECK_CU(cuDeviceGet(&ctx->device, dev));
+#if CUDA_VERSION >= 13000
+        CHECK_CU(cuCtxCreate(&ctx->cuda_ctx, NULL, 0, ctx->device));
+#else
         CHECK_CU(cuCtxCreate(&ctx->cuda_ctx, 0, ctx->device));
+#endif
         ctx->owns_context = 1;
     }
 

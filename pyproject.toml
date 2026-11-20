@@ -1,5 +1,6 @@
 [build-system]
-requires = ["setuptools>=77", "wheel", "nvidia-cuda-runtime-cu12==12.9.79"]
+requires = ["setuptools>=77", "wheel", "nvidia-cuda-nvcc==13.3.73", "nvidia-nvvm==13.3.73", "nvidia-cuda-crt==13.3.73",
+            "nvidia-cuda-runtime==13.0.96"]
 build-backend = "setuptools.build_meta"
 
 [project]

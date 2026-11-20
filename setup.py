@@ -49,11 +49,32 @@ _ROOT = os.path.dirname(os.path.abspath(__file__))
 # CUDA detection
 # ---------------------------------------------------------------------------
 
+def _pip_cuda_home():
+    """The CUDA 13 toolkit the build requirements install (nvidia-cuda-nvcc,
+    nvidia-nvvm, nvidia-cuda-crt, nvidia-cuda-runtime under nvidia/cu13): nvcc,
+    its front end, its headers and cuda.h. None where they are not installed."""
+    import importlib.util
+
+    try:
+        spec = importlib.util.find_spec("nvidia")
+    except (ImportError, ValueError):
+        return None
+    for base in (spec.submodule_search_locations or []) if spec else []:
+        home = os.path.join(base, "cu13")
+        if os.path.isfile(os.path.join(home, "bin", "nvcc")) and os.path.isfile(
+                os.path.join(home, "include", "cuda.h")):
+            return home
+    return None
+
+
 def _find_cuda_home():
     for env in ("CUDA_HOME", "CUDA_PATH"):
         val = os.environ.get(env)
         if val and os.path.isdir(val):
             return val
+    home = _pip_cuda_home()
+    if home:
+        return home
     nvcc = shutil.which("nvcc")
     if nvcc:
         return os.path.dirname(os.path.dirname(os.path.realpath(nvcc)))
@@ -64,50 +85,9 @@ def _find_cuda_home():
         "Cannot find CUDA toolkit. Set CUDA_HOME or ensure nvcc is on PATH.")
 
 
-def _cuda_stubs_dir(cuda_home):
-    for sub in ("lib64/stubs", "lib/stubs", "lib/x64"):
-        p = os.path.join(cuda_home, sub)
-        if os.path.isdir(p):
-            return p
-    return os.path.join(cuda_home, "lib64", "stubs")
-
-
-def _pip_cuda_runtime_dirs():
-    """Headers + import lib from the pip package nvidia-cuda-runtime-cu12.
-
-    That wheel ships cuda.h and (on Windows) cuda.lib, so the host extension
-    can be built without a CUDA toolkit install.
-    """
-    import importlib.util
-
-    try:
-        spec = importlib.util.find_spec("nvidia.cuda_runtime")
-    except (ImportError, ValueError):  # namespace parent absent
-        return None, None
-    if spec is None:
-        return None, None
-    base = None
-    if getattr(spec, "submodule_search_locations", None):
-        base = list(spec.submodule_search_locations)[0]
-    elif spec.origin:
-        base = os.path.dirname(spec.origin)
-    if not base or not os.path.isfile(os.path.join(base, "include", "cuda.h")):
-        return None, None
-    lib = os.path.join(base, "lib", "x64" if sys.platform == "win32" else "")
-    return os.path.join(base, "include"), lib
-
-
-def _cuda_dirs():
-    """(include_dir, lib_dir) for the CUDA driver API headers and import lib."""
-    for env in ("CUDA_HOME", "CUDA_PATH"):
-        home = os.environ.get(env)
-        if home and os.path.isfile(os.path.join(home, "include", "cuda.h")):
-            return os.path.join(home, "include"), _cuda_stubs_dir(home)
-    inc, lib = _pip_cuda_runtime_dirs()
-    if inc:
-        return inc, lib
-    home = _find_cuda_home()
-    return os.path.join(home, "include"), _cuda_stubs_dir(home)
+def _cuda_include_dir():
+    """The directory holding cuda.h (the CUDA driver API header)."""
+    return os.path.join(_find_cuda_home(), "include")
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +95,7 @@ def _cuda_dirs():
 # ---------------------------------------------------------------------------
 
 def _fatbin_gencode_flags():
-    archs_str = os.environ.get("CUACD_GPU_ARCHS", "80;86;89;90")
+    archs_str = os.environ.get("CUACD_GPU_ARCHS", "80;86;89;90;100;120")
     archs = [a.strip() for a in archs_str.replace(";", ",").split(",") if a.strip()]
     flags = []
     for a in archs:
@@ -257,13 +237,16 @@ class CoacdBuildExt(build_ext):
         """
         _stage_fatbin(os.path.join(self.build_temp, "gpu_build"))
 
-        include_dir, lib_dir = _cuda_dirs()
         ext.include_dirs = [
             os.path.join(_ROOT, "csrc"),   # heap.h
-            include_dir,                    # cuda.h
+            _cuda_include_dir(),            # cuda.h
         ]
-        ext.library_dirs = [lib_dir]
-        ext.libraries = ["cuda"]
+        if sys.platform == "win32":
+            # Windows links the driver's import library (CUDA_PATH's lib/x64);
+            # on Linux the driver symbols are left to resolve against
+            # libcuda.so.1, which cuacd loads globally before the extension.
+            ext.library_dirs = [os.path.join(_find_cuda_home(), "lib", "x64")]
+            ext.libraries = ["cuda"]
         c_args = ["/std:c11"] if sys.platform == "win32" else ["-std=c11", "-D_POSIX_C_SOURCE=199309L"]
         if os.environ.get("CUACD_V2_DEBUG"):
             c_args.append("-DCUACD_V2_DEBUG=1")

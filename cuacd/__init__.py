@@ -5,28 +5,40 @@ Uses CUDA driver API via a native CPython extension. No PyTorch or CUDA runtime 
 Only requires an NVIDIA GPU driver (libcuda.so / nvcuda.dll).
 """
 
+import ctypes
+import importlib
 import os
+import sys
+
 import numpy as np
-from cuacd import _gpu
 
-# The kernels ship next to this file as package data and are handed to the
-# extension on import. The blob is pure GPU code (PTX + cubins), so a single
-# copy built once on any platform serves every wheel.
+# The extension calls the CUDA driver API without linking the driver: on Linux
+# the driver library is loaded (globally, so the extension's driver symbols
+# resolve against it) when the first Context is made, so the package imports on
+# a machine without an NVIDIA driver. The kernels ship next to this file as
+# package data and are handed to the extension as it loads; the blob is pure GPU
+# code (PTX + cubins), so a single copy built once on any platform serves every
+# wheel.
+_gpu = None
 
 
-def _install_fatbin():
+def _load_extension():
+    global _gpu
+    if _gpu is not None:
+        return
+    if sys.platform != "win32":
+        ctypes.CDLL("libcuda.so.1", mode=ctypes.RTLD_GLOBAL)
+    extension = importlib.import_module("cuacd._gpu")
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kernels.fatbin")
     try:
         with open(path, "rb") as f:
-            _gpu.set_fatbin(f.read())
+            extension.set_fatbin(f.read())
     except OSError as e:
         raise ImportError(
             f"cuacd kernels are missing ({path}): reinstall the package or "
             f"build it from source with the CUDA toolkit available"
         ) from e
-
-
-_install_fatbin()
+    _gpu = extension
 
 # mesh-audit verdict bitmask (mirrors cuda/mesh_audit.cuh MAV_* flags)
 MAV_DEGEN_TRI   = 1 << 0
@@ -71,6 +83,7 @@ class Context:
     """
 
     def __init__(self, device=-1, pool_bytes=0):
+        _load_extension()
         _gpu.init(device, pool_bytes)
         self._alive = True
 
